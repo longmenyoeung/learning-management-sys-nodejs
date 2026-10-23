@@ -181,14 +181,19 @@ app.use(errorHandler);
 
 // ── 🎧 Bootstrapping ────────────────────────────────────────────────────────
 const PORT = process.env.PORT || process.env.PORT1 || 4000; // PORT2 is kept as a spare
+// 💡 Render (and most PaaS providers) route traffic to 0.0.0.0. Binding the
+//    wildcard address explicitly avoids an IPv6-only listener on some hosts.
+const HOST = process.env.BIND_HOST || '0.0.0.0';
 
 const startServer = async () => {
   await connectDB();
 
-  const server = app.listen(PORT, () => {
-    console.log(`\n🚀 LMS API listening on http://localhost:${PORT}`);
-    if (swaggerEnabled) console.log(`📖 Swagger UI    →  http://localhost:${PORT}/api-docs`);
-    console.log(`❤️  Health check  →  http://localhost:${PORT}/health\n`);
+  const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`\n🚀 LMS API listening on ${publicUrl} (bound to ${HOST}:${PORT})`);
+    if (swaggerEnabled) console.log(`📖 Swagger UI    →  ${publicUrl}/api-docs`);
+    console.log(`❤️  Health check  →  ${publicUrl}/health\n`);
   });
 
   // 💡 Close the HTTP server + the database connection cleanly (Ctrl+C, Docker stop, ...)

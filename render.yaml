@@ -1,0 +1,70 @@
+# ============================================================================
+#  ☁️ render.yaml — Render Blueprint (Infrastructure as Code)
+# ============================================================================
+#  Deploy: Render Dashboard → New + → Blueprint → connect this repository.
+#  Docs:   https://render.com/docs/blueprint-spec
+#
+#  🔐 Secrets are marked `sync: false`: Render prompts for them in the dashboard
+#     on the first deploy, so no credential is ever stored in Git.
+#
+#  💡 Render sets NODE_ENV=production and PORT automatically for Node services,
+#     and the app already binds to 0.0.0.0 (see server.js).
+# ============================================================================
+services:
+  - type: web
+    name: lms-api
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Render already sets this for Node; kept explicit so the intent is clear.
+      - key: NODE_ENV
+        value: production
+
+      # ── 🔐 Required secrets (prompted once, never committed) ──────────────
+      - key: MONGODB_URI
+        sync: false
+      - key: SECRET_JWT
+        sync: false
+
+      # ── 🗄️ Database ───────────────────────────────────────────────────────
+      - key: DB_NAME
+        value: lms_api
+
+      # ── 🔐 JWT ────────────────────────────────────────────────────────────
+      - key: JWT_EXPIRES_IN
+        value: 2h
+      - key: JWT_ISSUER
+        value: lms-api
+      - key: JWT_AUDIENCE
+        value: lms-client
+      - key: BCRYPT_SALT_ROUNDS
+        value: "10"
+
+      # ── 🌍 HTTP / proxy ───────────────────────────────────────────────────
+      # Render terminates TLS and redirects HTTP → HTTPS at its edge, so the app
+      # does not need to redirect again. `trust proxy` = 1 makes req.ip and the
+      # rate limiter see the real client address instead of the load balancer.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: FORCE_HTTPS
+        value: "false"
+
+      # ── 📖 Swagger ────────────────────────────────────────────────────────
+      - key: ENABLE_SWAGGER
+        value: "false"
+
+      # ── 🚦 Rate limiting (defaults shown; tune to your traffic) ───────────
+      - key: RATE_LIMIT_MAX
+        value: "300"
+      - key: AUTH_RATE_LIMIT_MAX
+        value: "10"
+
+      # ── 🌍 Optional: add these in the Render dashboard when you have a UI ─
+      # CORS_ORIGINS = https://your-frontend.example.com,https://admin.example.com
+      # API_BASE_URL = https://lms-api.onrender.com   (unset → RENDER_EXTERNAL_URL)

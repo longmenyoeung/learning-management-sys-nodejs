@@ -19,6 +19,7 @@ Student → finds course → enrolls → studies lessons → completes them
 - [Features](#-features)
 - [Tech stack](#-tech-stack)
 - [Getting started](#-getting-started)
+- [Deploy to Render](#-deploy-to-render)
 - [Environment variables](#-environment-variables)
 - [Project structure](#-project-structure)
 - [Roles & permissions](#-roles--permissions)
@@ -58,7 +59,7 @@ Student → finds course → enrolls → studies lessons → completes them
 
 ## 🧰 Tech stack
 
-- **Node.js** ≥ 18 (developed on Node 24) — CommonJS (`require`)
+- **Node.js** 20–24 (developed on Node 24) — CommonJS (`require`)
 - **Express 4** — routing, middleware pipeline
 - **MongoDB Atlas** + **Mongoose 8** — schemas, indexes, populate, aggregation
 - **jsonwebtoken** + **bcryptjs** — authentication and hashing
@@ -66,6 +67,7 @@ Student → finds course → enrolls → studies lessons → completes them
 - **Swagger** (`swagger-jsdoc` + `swagger-ui-express`) — OpenAPI 3 documentation
 - **Vitest + Supertest** — integration testing
 - **helmet**, **cors**, **express-rate-limit**, **morgan** — security headers, CORS allow-list, rate limiting, request logging
+- **Render Blueprint** (`render.yaml`) — one-click deployment, health check `/health`
 
 ---
 
@@ -103,6 +105,94 @@ npm run dev               # nodemon, or: npm start
 | `npm test` | run the whole Vitest/Supertest suite |
 | `npm run test:watch` | tests in watch mode |
 | `npm run seed` | insert the demo data |
+
+---
+
+## 🚀 Deploy to Render
+
+The repository ships a [`render.yaml`](render.yaml) **Blueprint**, so the runtime,
+build/start commands, health check and every non-secret environment variable are
+declared in code. Secrets are marked `sync: false` — Render asks for them in the
+dashboard and they never land in Git.
+
+### 1. Deploy the Blueprint (recommended)
+
+1. Push this repository to GitHub (branch `main`).
+2. Open [dashboard.render.com](https://dashboard.render.com) → **New +** →
+   **Blueprint**.
+3. Connect the repo and click **Apply**. Render creates the `lms-api` web
+   service from `render.yaml`.
+4. Fill in the two prompted secrets:
+   - **`MONGODB_URI`** — Atlas SRV URI, e.g.
+     `mongodb+srv://lms_app:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority`
+   - **`SECRET_JWT`** — generate one with
+     `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
+5. Wait for the deploy; the API is live at
+   `https://<service>.onrender.com` and redeploys on every push to `main`.
+
+### 2. Or create the web service manually
+
+| Render setting | Value |
+| --- | --- |
+| Runtime | **Node** |
+| Build command | `npm ci` |
+| Start command | `npm start` |
+| Health check path | `/health` |
+| Region | **Singapore** (or the closest one) |
+| Plan | **Free** — sleeps after 15 min without traffic (cold start ≈ 30–60 s) |
+| Auto-deploy | **Yes**, branch `main` |
+
+Environment variables to add in **Settings → Environment**:
+
+| Variable | Value |
+| --- | --- |
+| `MONGODB_URI` | Atlas connection string 🔐 |
+| `DB_NAME` | `lms_api` |
+| `SECRET_JWT` | 48 random bytes, base64url 🔐 |
+| `TRUST_PROXY` | `1` — Render's load balancer is one hop |
+| `FORCE_HTTPS` | `false` — Render's edge already redirects HTTP → HTTPS |
+| `ENABLE_SWAGGER` | `false` (keep the docs private) |
+| `NODE_ENV` | `production` — Render sets this automatically for Node |
+| `CORS_ORIGINS` | optional — `https://your-frontend.example.com` |
+| `API_BASE_URL` | optional — defaults to Render's `RENDER_EXTERNAL_URL` |
+| `PORT` | **do not set** — Render assigns it (default `10000`) and `server.js` reads it |
+
+> ℹ️ `server.js` binds to `0.0.0.0` and listens on `process.env.PORT`, which is
+> exactly what Render requires. `npm ci` uses the committed `package-lock.json`
+> for reproducible builds.
+
+### 3. Let Render reach MongoDB Atlas
+
+Render **Free** instances use dynamic outbound IPs, so in Atlas →
+**Network Access** add `0.0.0.0/0` (or use Render's dedicated outbound IPs on a
+paid plan and allow only those). Create a dedicated Atlas user with
+`readWrite` on the `lms_api` database — never reuse your Atlas admin account.
+
+### 4. Verify the deployment
+
+```bash
+curl https://<service>.onrender.com/health
+# {"success":true,"status":"ok","database":"connected","uptime":12,...}
+
+curl https://<service>.onrender.com/
+# landing page + quick endpoint list
+```
+
+Render logs (`Logs` tab) show `✅ MongoDB connected` and
+`🚀 LMS API listening on https://… (bound to 0.0.0.0:10000)`.
+
+### 5. Create the first admin
+
+`npm run seed` refuses to run with `NODE_ENV=production`, so on Render:
+
+1. `POST /api/auth/register` with your details → creates a `student`.
+2. Atlas → **Browse Collections** → `lms_api` → `users` → set that user's
+   `role` to `admin`.
+3. Log in again: the new JWT carries the `admin` role.
+
+> ⚠️ Never run the demo seed against production data. If you really need the
+> demo dataset on Atlas, run it **locally** with `NODE_ENV=development`,
+> `SEED_ALLOW_REMOTE=true` and a throwaway `SEED_DB_NAME`.
 
 ---
 
@@ -154,6 +244,11 @@ SEED_PASSWORD=             # leave empty for a random strong password printed on
 SEED_ALLOW_REMOTE=false    # must be true to seed a non-local MongoDB
 # SEED_DB_NAME=lms_demo    # seed a throwaway database instead of DB_NAME
 ```
+
+> ☁️ **On Render:** `NODE_ENV=production` and `PORT` are provided by the platform;
+> never commit a production `.env`. Use `TRUST_PROXY=1` and `FORCE_HTTPS=false`
+> (Render's edge terminates TLS and redirects HTTP → HTTPS). See
+> [Deploy to Render](#-deploy-to-render) and [`render.yaml`](render.yaml).
 
 ---
 
@@ -578,6 +673,10 @@ Each phase of the brief is implemented and tested:
 | Tests feel slow | they default to your **local MongoDB** (`MONGODB_URI_TEST`). If you comment that out they talk to Atlas — the suite then takes a few minutes. Use `USE_MEMORY_DB=true` for a fully offline run |
 | Tests cannot connect | the local `MongoDB` service is not running → start it, or comment `MONGODB_URI_TEST` out to use Atlas |
 | Swagger shows no operations | start the server from the project root so `swagger-jsdoc` can resolve `src/routes/*.js` |
+| Render: deploy fails with “no open ports detected” | listen on `process.env.PORT` and bind `0.0.0.0` — `server.js` already does; do not hardcode `PORT1` in Render |
+| Render: `502` / very slow first request | Free instances sleep after 15 min idle → the first request wakes the service (≈ 30–60 s); retry once |
+| Render: `MongooseServerSelectionError` | Atlas → *Network Access* must allow `0.0.0.0/0` (Free Render egress IPs are dynamic) |
+| Render: browser gets a CORS error | set `CORS_ORIGINS` to the exact frontend origin (scheme + host + port) and redeploy |
 
 ---
 

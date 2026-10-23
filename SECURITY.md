@@ -64,7 +64,7 @@ the project lives in a cloud-synced OneDrive folder.
 | `JWT_ISSUER` / `JWT_AUDIENCE` | keep the defaults (`lms-api` / `lms-client`) unless you change both sign **and** verify |
 | `CORS_ORIGINS` | explicit `https://…` origins, comma separated — never `*` |
 | `TRUST_PROXY` | number of proxy hops (`1` behind nginx/Render/Heroku, `0` when directly exposed) |
-| `FORCE_HTTPS` | `true` when TLS terminates upstream, `false` for local containers |
+| `FORCE_HTTPS` | `true` when your own proxy terminates TLS but does not redirect; `false` on Render (its edge already redirects HTTP → HTTPS) |
 | `ENABLE_SWAGGER` | `false` (leave unset) |
 | `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX` | tune to your traffic; defaults are `300` / `10` per 15 min per IP |
 | `SEED_PASSWORD`, `SEED_ALLOW_REMOTE` | never set in production — `npm run seed` refuses to run there |
@@ -185,6 +185,26 @@ the standard `RateLimit` headers.
   and no longer contains a hardcoded password (random when `SEED_PASSWORD` is
   unset).
 - `.env` is git-ignored; `.env.example` documents every variable.
+
+### Render deployment notes
+
+- [`render.yaml`](render.yaml) contains **no secrets**: `MONGODB_URI` and
+  `SECRET_JWT` use `sync: false` and are entered in the Render dashboard.
+- Render sets `NODE_ENV=production` and `PORT` automatically. Keep
+  `TRUST_PROXY=1` so `req.ip` and the rate limiter see the real client IP, and
+  leave `FORCE_HTTPS=false` because Render's edge redirects HTTP → HTTPS and
+  terminates TLS before forwarding the request.
+- `API_BASE_URL` defaults to Render's `RENDER_EXTERNAL_URL`, so the CORS
+  allow-list automatically contains the service's own public origin.
+- Render **Free** egress IPs are dynamic: Atlas must allow `0.0.0.0/0`, or use
+  dedicated outbound IPs on a paid plan and allow only those. Use a dedicated,
+  least-privilege Atlas user for the database.
+- Free web services sleep after 15 minutes without traffic (cold start ≈ 30–60 s);
+  the API itself is stateless and stores everything in MongoDB.
+- `npm run seed` refuses to run in production — create the first admin by
+  registering a user and promoting `role` to `admin` in Atlas.
+- Rotating `SECRET_JWT` invalidates every issued token. Do it deliberately,
+  then restart/redeploy the service.
 
 ---
 

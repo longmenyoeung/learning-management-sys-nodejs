@@ -36,8 +36,14 @@ const parseOrigins = (value = '') =>
 /** The API's own public origin (Swagger UI calls the API from here). */
 const getApiOrigin = () => {
   const port = process.env.PORT || process.env.PORT1 || 4000;
+  // 💡 On Render the public URL is available as RENDER_EXTERNAL_URL, so the
+  //    allow-list is correct without setting API_BASE_URL by hand.
+  const baseUrl =
+    process.env.API_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `http://localhost:${port}`;
   try {
-    return new URL(process.env.API_BASE_URL || `http://localhost:${port}`).origin;
+    return new URL(baseUrl).origin;
   } catch {
     return null;
   }
