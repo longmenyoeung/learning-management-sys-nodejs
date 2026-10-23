@@ -202,6 +202,7 @@ Render logs (`Logs` tab) show `✅ MongoDB connected` and
 NODE_ENV=development
 PORT1=4000                 # main API port (PORT is also supported and wins over PORT1)
 PORT2=5000                 # kept as a spare port (2nd instance)
+BIND_HOST=0.0.0.0          # interface to bind (0.0.0.0 = all; 127.0.0.1 = local only)
 API_BASE_URL=http://localhost:4000
 
 MONGODB_ATLAS=mongodb+srv://user:pass@cluster/?appName=App   # used when MONGODB_URI is empty
